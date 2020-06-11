@@ -1,36 +1,67 @@
 package org.opennetworking.crowd;
 
-import com.google.common.base.Strings;
+import com.atlassian.plugin.spring.scanner.annotation.imports.ComponentImport;
+import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
 import com.google.gson.Gson;
+import org.apache.commons.codec.digest.HmacUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.inject.Inject;
 import java.io.DataOutputStream;
 import java.net.ConnectException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
+import static com.google.common.base.Strings.isNullOrEmpty;
+
 public class OnfEventPoster {
     private final static Logger logger = LoggerFactory.getLogger(OnfEventPoster.class);
+    private final static String DEFAULT_TARGET_URL = "http://localhost:5000";
 
-    public static void send(OnfEventListener.WebhookEvent event) {
+    private String targetUrl;
+    private String webhookSecret;
+
+    // https://developer.atlassian.com/server/framework/atlassian-sdk/store-and-retrieve-plugin-data/
+    @ComponentImport
+    private final PluginSettingsFactory pluginSettingsFactory;
+
+    @Inject
+    public OnfEventPoster(final PluginSettingsFactory pluginSettingsFactory) {
+        this(); //FIXME replace this with reading properties from Crowd
+        // PluginSettings globalSettings = this.pluginSettingsFactory.createGlobalSettings();
+        // globalSettings.put("bocon.send", "send");
+    }
+
+    private OnfEventPoster() {
+        // TODO perhaps use Crowd configuration for target url and secret instead
+        this(System.getenv("ONF_WEBHOOK_URL"), System.getenv("ONF_WEBHOOK_SECRET"));
+    }
+
+    private OnfEventPoster(String targetUrl, String webhookSecret) {
+        pluginSettingsFactory = null;
+
+        this.targetUrl = isNullOrEmpty(targetUrl) ? DEFAULT_TARGET_URL : targetUrl;
+        this.webhookSecret = isNullOrEmpty(webhookSecret) ? null : webhookSecret;
+        if (webhookSecret == null) {
+            logger.warn("No webhook secret is set. Webhooks will be unsigned.");
+        }
+    }
+
+    public void send(OnfEventListener.WebhookEvent event) {
         Gson gson = new Gson();
         String payload = gson.toJson(event);
 
         HttpURLConnection connection = null;
-
-        // TODO perhaps use Crowd configuration for this instead
-        String targetUrl = "http://localhost:5000";
-        String envUrl = System.getenv("ONF_WEBHOOK_URL");
-        if (!Strings.isNullOrEmpty(envUrl)) {
-            targetUrl = envUrl;
-        }
         try {
             connection = (HttpURLConnection) new URL(targetUrl).openConnection();
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Content-Type", "application/json");
             connection.setRequestProperty("Content-Length", Integer.toString(payload.getBytes().length));
-            // TODO add some type of signature to prevent webhook spoofing
+            if (!isNullOrEmpty(webhookSecret)) {
+                // Add HTTP property with payload signature to prevent webhook spoofing
+                connection.setRequestProperty("Crowd-Webhook-Signature", HmacUtils.hmacSha256Hex("key", payload));
+            }
             connection.setUseCaches(false);
             connection.setDoOutput(true);
             DataOutputStream wr = new DataOutputStream(connection.getOutputStream());

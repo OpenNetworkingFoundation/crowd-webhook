@@ -8,6 +8,7 @@ import com.atlassian.crowd.event.group.GroupMembershipDeletedEvent;
 import com.atlassian.crowd.event.group.GroupMembershipsCreatedEvent;
 import com.atlassian.crowd.event.user.*;
 import com.atlassian.crowd.exception.DirectoryNotFoundException;
+import com.atlassian.crowd.exception.GroupNotFoundException;
 import com.atlassian.crowd.exception.OperationFailedException;
 import com.atlassian.crowd.exception.UserNotFoundException;
 import com.atlassian.crowd.manager.audit.AuditService;
@@ -21,43 +22,43 @@ import com.atlassian.crowd.search.EntityDescriptor;
 import com.atlassian.crowd.search.builder.QueryBuilder;
 import com.atlassian.event.api.EventListener;
 import com.atlassian.plugin.spring.scanner.annotation.imports.ComponentImport;
-import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
-import com.google.common.base.Strings;
+import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
+
+import static com.google.common.base.Objects.equal;
+import static com.google.common.base.Strings.isNullOrEmpty;
 
 public class OnfEventListener {
-    private final static Logger logger = LoggerFactory.getLogger(OnfEventListener.class);
+    private static final Logger logger = LoggerFactory.getLogger(OnfEventListener.class);
 
-    public static String EMAIL_ATTRIBUTE = "Email";
-    public static String GITHUB_ID_ATTRIBUTE = "github_id";
+    public static final String EMAIL_ATTRIBUTE = "Email";
+    public static final String GITHUB_ID_ATTRIBUTE = "github_id";
+    public static final int MAX_RESULTS = 1000;
+
+    @ComponentImport
+    private final OnfEventPoster eventPoster;
 
     @ComponentImport
     private final DirectoryManager directoryManager;
-
-    // https://developer.atlassian.com/server/framework/atlassian-sdk/store-and-retrieve-plugin-data/
-    @ComponentImport
-    private final PluginSettingsFactory pluginSettingsFactory;
 
     @ComponentImport
     private final AuditService auditService;
 
     @Inject
-    public OnfEventListener(final DirectoryManager directoryManager,
-                            final PluginSettingsFactory pluginSettingsFactory,
+    public OnfEventListener(final OnfEventPoster eventPoster,
+                            final DirectoryManager directoryManager,
                             final AuditService auditService)
     {
+        this.eventPoster = eventPoster;
         this.directoryManager = directoryManager;
-        this.pluginSettingsFactory = pluginSettingsFactory;
-//        PluginSettings globalSettings = this.pluginSettingsFactory.createGlobalSettings();
-//        globalSettings.put("bocon.send", "send");
         this.auditService = auditService;
     }
 
@@ -68,13 +69,42 @@ public class OnfEventListener {
         List<String> groups;
         String githubId;
 
-        WebhookUser(UserWithAttributes user) {
+        public WebhookUser(UserWithAttributes user) {
             username = user.getName();
             email = user.getEmailAddress();
             name = user.getDisplayName();
+            groups = ImmutableList.of();
             if (user.getKeys().contains(GITHUB_ID_ATTRIBUTE)) {
                 githubId = user.getValue(GITHUB_ID_ATTRIBUTE);
             }
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof WebhookUser)) return false;
+            WebhookUser that = (WebhookUser) o;
+            return equal(username, that.username) &&
+                    equal(email, that.email) &&
+                    equal(name, that.name) &&
+                    equal(groups, that.groups) &&
+                    equal(githubId, that.githubId);
+        }
+
+        @Override
+        public int hashCode() {
+            return com.google.common.base.Objects.hashCode(username, email, name, groups, githubId);
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(this)
+                    .add("username", username)
+                    .add("email", email)
+                    .add("name", name)
+                    .add("groups", groups)
+                    .add("githubId", githubId)
+                    .toString();
         }
     }
 
@@ -90,13 +120,46 @@ public class OnfEventListener {
     }
 
     public static class WebhookEvent {
-        EventType type;
-        WebhookUser user;
-        String groupName;
-        String oldGithubId;
-        String newGithubId;
-        String oldEmail;
-        String newEmail;
+        public EventType type;
+        public WebhookUser user;
+        public String groupName;
+        public String oldGithubId;
+        public String newGithubId;
+        public String oldEmail;
+        public String newEmail;
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof WebhookEvent)) return false;
+            WebhookEvent that = (WebhookEvent) o;
+            return type == that.type &&
+                    equal(user, that.user) &&
+                    equal(groupName, that.groupName) &&
+                    equal(oldGithubId, that.oldGithubId) &&
+                    equal(newGithubId, that.newGithubId) &&
+                    equal(oldEmail, that.oldEmail) &&
+                    equal(newEmail, that.newEmail);
+        }
+
+        @Override
+        public int hashCode() {
+            return com.google.common.base.Objects.hashCode(
+                    type, user, groupName, oldGithubId, newGithubId, oldEmail, newEmail);
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(this)
+                    .add("type", type)
+                    .add("user", user)
+                    .add("groupName", groupName)
+                    .add("oldGithubId", oldGithubId)
+                    .add("newGithubId", newGithubId)
+                    .add("oldEmail", oldEmail)
+                    .add("newEmail", newEmail)
+                    .toString();
+        }
     }
 
 //    @EventListener
@@ -135,8 +198,6 @@ public class OnfEventListener {
         });
     }
 
-
-
     @EventListener
     public void userEmailUpdated(UserEmailChangedEvent event) {
         /*
@@ -165,11 +226,17 @@ public class OnfEventListener {
         // Note: event.getAttributeValues(key) only contains updated attributes
         if (event.getAttributeNames().contains(GITHUB_ID_ATTRIBUTE)) {
             WebhookUser user = getUser(event.getDirectoryId(), event.getUser().getName());
-            // TODO grabbing the first value for now
-            String newValue = event.getAttributeValues(GITHUB_ID_ATTRIBUTE).iterator().next();
+            // TODO grabbing the first value for now; we don't support multiple Github IDs
+            // In some cases, it seems like getAttributeValues returns an empty collection; not sure why?
+            String newValue = event.getAttributeValues(GITHUB_ID_ATTRIBUTE).stream().findFirst()
+                                   .orElseGet(() -> {
+                                       logger.warn("Event missing Github ID -- user: {} / github id: {}",
+                                                   user.name, user.githubId);
+                                       return ""; // return empty string for now
+                                   });
             AuditLogEntry entry = createAuditEntry(event.getUser().getName(), GITHUB_ID_ATTRIBUTE,
                                                    newValue, event.getTimestamp());
-            boolean isUpdated = !Strings.isNullOrEmpty(entry.getOldValue());
+            boolean isUpdated = !isNullOrEmpty(entry.getOldValue());
             WebhookEvent webhookEvent = new WebhookEvent();
             webhookEvent.type = isUpdated ? EventType.USER_UPDATED_GITHUB: EventType.USER_ADDED_GITHUB;
             webhookEvent.user = user;
@@ -179,9 +246,6 @@ public class OnfEventListener {
             webhookEvent.newGithubId = entry.getNewValue();
             this.sendEvent(webhookEvent);
         }
-//        event.getAttributeNames().forEach(key -> {
-//            System.out.println(key + ": " + event.getAttributeValues(key).iterator().next());
-//        });
     }
 
     @EventListener
@@ -194,7 +258,8 @@ public class OnfEventListener {
          */
         if (event.getAttributeName().equals(GITHUB_ID_ATTRIBUTE)) {
             WebhookUser user = getUser(event.getDirectoryId(), event.getUser().getName());
-            AuditLogEntry entry = createAuditEntry(event.getUser().getName(), GITHUB_ID_ATTRIBUTE, "", event.getTimestamp());
+            AuditLogEntry entry = createAuditEntry(
+                    event.getUser().getName(), GITHUB_ID_ATTRIBUTE, "", event.getTimestamp());
             WebhookEvent webhookEvent = new WebhookEvent();
             webhookEvent.type = EventType.USER_DELETED_GITHUB;
             webhookEvent.user = user;
@@ -206,22 +271,38 @@ public class OnfEventListener {
     @EventListener
     public void groupMembersCreated(GroupMembershipsCreatedEvent event) {
         /*
-          WebhookUser added to group
+          User or nested group added to group
 
           Actions:
            - add the user to the appropriate external teams
          */
+        final Long directoryId = event.getDirectoryId();
+        final Set<String> groupAndParents = getGroupAndParents(directoryId, event.getGroupName());
+
+        final Collection<String> users;
         if (event.getMembershipType() == MembershipType.GROUP_USER) {
-            String group = event.getGroupName();
-            event.getEntityNames().forEach(username -> {
-                WebhookUser user = this.getUser(event.getDirectoryId(), username);
+            users = event.getEntityNames();
+        } else if (event.getMembershipType() == MembershipType.GROUP_GROUP) {
+            // Collect the users from each newly added group
+            users = event.getEntityNames().stream()
+                    .flatMap(groupName -> 
+                        Objects.requireNonNull(getNestedGroupUsers(directoryId, groupName)).stream())
+                    .collect(Collectors.toSet());
+        } else {
+            users = ImmutableList.of();
+        }
+
+        // Generate an event for each user that has been directly or indirectly added the group and its parents
+        users.forEach(username ->
+            groupAndParents.forEach(groupName -> {
+                WebhookUser user = this.getUser(directoryId, username);
                 WebhookEvent webhookEvent = new WebhookEvent();
                 webhookEvent.type = EventType.USER_ADDED_GROUP;
                 webhookEvent.user = user;
-                webhookEvent.groupName = group;
+                webhookEvent.groupName = groupName;
                 this.sendEvent(webhookEvent);
-            });
-        }
+            })
+        );
     }
 
     @EventListener
@@ -232,14 +313,34 @@ public class OnfEventListener {
           Actions:
            - remove the user to the appropriate external teams
          */
+        final Long directoryId = event.getDirectoryId();
+        final Set<String> groupAndParents = this.getGroupAndParents(directoryId, event.getGroupName());
+
+
+        final List<String> users;
         if (event.getMembershipType() == MembershipType.GROUP_USER) {
-            WebhookUser user = this.getUser(event.getDirectoryId(), event.getEntityName());
-            WebhookEvent webhookEvent = new WebhookEvent();
-            webhookEvent.type = EventType.USER_DELETED_GROUP;
-            webhookEvent.user = user;
-            webhookEvent.groupName = event.getGroupName();
-            this.sendEvent(webhookEvent);
+            users = ImmutableList.of(event.getEntityName());
+        } else if (event.getMembershipType() == MembershipType.GROUP_GROUP) {
+            // Collect the users from each newly removed group
+            users = getNestedGroupUsers(directoryId, event.getEntityName());
+        } else {
+            users = ImmutableList.of();
         }
+
+        users.forEach(username ->
+            groupAndParents.forEach(groupName -> {
+                WebhookUser user = this.getUser(directoryId, username);
+                if (user.groups.contains(groupName)) {
+                    // user is still a number of the group through another group / nested group
+                    return; // skip this event
+                }
+                WebhookEvent webhookEvent = new WebhookEvent();
+                webhookEvent.type = EventType.USER_DELETED_GROUP;
+                webhookEvent.user = user;
+                webhookEvent.groupName = groupName;
+                this.sendEvent(webhookEvent);
+            })
+        );
     }
 
 
@@ -252,10 +353,10 @@ public class OnfEventListener {
                     QueryBuilder.queryFor(String.class, EntityDescriptor.group())
                             .parentsOf(EntityDescriptor.user())
                             .withName(username)
-                            .returningAtMost(1000));
+                            .returningAtMost(MAX_RESULTS));
         } catch (DirectoryNotFoundException e) {
             logger.error("Crowd directory not found", e);
-        } catch (UserNotFoundException e) { //
+        } catch (UserNotFoundException e) {
             logger.error("User not found: {}", username);
         } catch (OperationFailedException e) {
             logger.error("Get user operations failed", e);
@@ -263,10 +364,42 @@ public class OnfEventListener {
         return user;
     }
 
+    private Set<String> getGroupAndParents(long directoryId, String groupName) {
+        Set<String> groups = Sets.newHashSet();
+        try {
+            groups.add(directoryManager.findGroupByName(directoryId, groupName).getName());
+            groups.addAll(directoryManager.searchNestedGroupRelationships(directoryId,
+                    QueryBuilder.queryFor(String.class, EntityDescriptor.group())
+                            .parentsOf(EntityDescriptor.group())
+                            .withName(groupName)
+                            .returningAtMost(MAX_RESULTS)));
+        } catch (DirectoryNotFoundException e) {
+            logger.error("Crowd directory not found", e);
+        } catch (GroupNotFoundException e) {
+            logger.error("Group not found: {}", groupName);
+        } catch (OperationFailedException e) {
+            logger.error("Get group operations failed", e);
+        }
+        return groups;
+    }
+
+    private List<String> getNestedGroupUsers(long directoryId, String groupName) {
+        try {
+            return directoryManager.searchNestedGroupRelationships(directoryId,
+                    QueryBuilder.queryFor(String.class, EntityDescriptor.user())
+                            .childrenOf(EntityDescriptor.group())
+                            .withName(groupName)
+                            .returningAtMost(MAX_RESULTS));
+        } catch (DirectoryNotFoundException e) {
+            logger.error("Crowd directory not found", e);
+        } catch (OperationFailedException e) {
+            logger.error("Get group operations failed", e);
+        }
+        return ImmutableList.of();
+    }
+
     private void sendEvent(WebhookEvent event) {
-//        Gson gson = new Gson();
-//        System.out.println(gson.toJson(event));
-        OnfEventPoster.send(event);
+        eventPoster.send(event);
     }
 
     private Optional<? extends AuditLogEntry> getAuditEntry(String username, String attribute) {
@@ -317,6 +450,7 @@ public class OnfEventListener {
                 .map(Optional::get)
                 .filter(e -> Objects.equals(e.getEntityName(), username))
                 .map(AuditLogEntity::getEntityId)
+                .filter(Objects::nonNull)
                 .findFirst()
                 .ifPresent(entity::setEntityId);
         changeset.setEntities(ImmutableSet.of(entity));
