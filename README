@@ -1,0 +1,19 @@
+
+## Setup
+Install tools
+https://developer.atlassian.com/server/framework/atlassian-sdk/install-the-atlassian-sdk-on-a-linux-or-mac-system/#step-2-download-and-install-the-sdk
+brew tap atlassian/tap
+brew install atlassian/tap/atlassian-plugin-sdk
+atlas-version
+
+## How the create a plugin
+atlas-create-crowd-plugin
+.m2/settings to  /Applications/Atlassian/atlassian-plugin-sdk-6.3.12/apache-maven-3.2.1/conf/settings.xml
+
+
+## Running locally
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home/
+export ONF_WEBHOOK_URL="http://localhost:5001/cla-manager-f1a7f/us-central1/crowdEndpoint"
+export ONF_WEBHOOK_SECRET="aaaaaaaaaaaaaa"
+atlas-clean
+atlas-run -Dproduct.version=3.7.0
