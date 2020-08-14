@@ -1,13 +1,19 @@
-package org.opennetworking.crowd;
+package org.opennetworking.crowd.poster;
 
+import com.atlassian.plugin.spring.scanner.annotation.export.ExportAsService;
 import com.atlassian.plugin.spring.scanner.annotation.imports.ComponentImport;
+import com.atlassian.sal.api.pluginsettings.PluginSettings;
 import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
 import com.google.gson.Gson;
 import org.apache.commons.codec.digest.HmacUtils;
+import org.opennetworking.crowd.api.OnfEventPoster;
+import org.opennetworking.crowd.api.WebhookEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 import javax.inject.Inject;
+import javax.inject.Named;
 import java.io.DataOutputStream;
 import java.net.ConnectException;
 import java.net.HttpURLConnection;
@@ -15,8 +21,11 @@ import java.net.URL;
 
 import static com.google.common.base.Strings.isNullOrEmpty;
 
-public class OnfEventPoster {
-    private final static Logger logger = LoggerFactory.getLogger(OnfEventPoster.class);
+@ExportAsService({OnfEventPoster.class})
+@Named("onfEventPoster")
+//@Component("onfEventPoster")
+public class OnfEventPosterImpl implements OnfEventPoster {
+    private final static Logger logger = LoggerFactory.getLogger(OnfEventPosterImpl.class);
     private final static String DEFAULT_TARGET_URL = "http://localhost:5000";
 
     private String targetUrl;
@@ -27,18 +36,18 @@ public class OnfEventPoster {
     private final PluginSettingsFactory pluginSettingsFactory;
 
     @Inject
-    public OnfEventPoster(final PluginSettingsFactory pluginSettingsFactory) {
+    public OnfEventPosterImpl(final PluginSettingsFactory pluginSettingsFactory) {
         this(); //FIXME replace this with reading properties from Crowd
-        // PluginSettings globalSettings = this.pluginSettingsFactory.createGlobalSettings();
+//         PluginSettings globalSettings = this.pluginSettingsFactory.createGlobalSettings();
         // globalSettings.put("bocon.send", "send");
     }
 
-    private OnfEventPoster() {
+    private OnfEventPosterImpl() {
         // TODO perhaps use Crowd configuration for target url and secret instead
         this(System.getenv("ONF_WEBHOOK_URL"), System.getenv("ONF_WEBHOOK_SECRET"));
     }
 
-    private OnfEventPoster(String targetUrl, String webhookSecret) {
+    private OnfEventPosterImpl(String targetUrl, String webhookSecret) {
         pluginSettingsFactory = null;
 
         this.targetUrl = isNullOrEmpty(targetUrl) ? DEFAULT_TARGET_URL : targetUrl;
@@ -48,7 +57,7 @@ public class OnfEventPoster {
         }
     }
 
-    public void send(OnfEventListener.WebhookEvent event) {
+    public void send(WebhookEvent event) {
         Gson gson = new Gson();
         String payload = gson.toJson(event);
 

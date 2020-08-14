@@ -6,17 +6,32 @@
 
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.opennetworking.crowd</groupId>
-    <artifactId>crowd-event-handler</artifactId>
+    <artifactId>onf-crowd-event-handler</artifactId>
     <version>0.1.0-SNAPSHOT</version>
 
     <organization>
-        <name>Example Company</name>
-        <url>http://www.example.com/</url>
+        <name>Open Networking Foundation</name>
+        <url>http://opennetworking.org/</url>
     </organization>
 
-    <name>crowd-event-handler</name>
-    <description>This is the org.opennetworking.crowd:crowd-event-handler plugin for Atlassian Crowd.</description>
+    <name>onf-crowd-event-handler</name>
+    <description>Generates webhook events from Crowd for ONF services.</description>
     <packaging>atlassian-plugin</packaging>
+
+    <properties>
+        <crowd.version>3.7.0</crowd.version>
+        <crowd.data.version>3.7.0</crowd.data.version>
+        <amps.version>6.3.21</amps.version>
+        <plugin.testrunner.version>1.2.3</plugin.testrunner.version>
+        <atlassian.spring.scanner.version>2.1.5</atlassian.spring.scanner.version>
+        <!--Must match atlassian-crowd pom version-->
+        <slf4j.version>1.7.25</slf4j.version>
+        <!-- This key is used to keep the consistency between the key in atlassian-plugin.xml and the key to generate bundle. -->
+        <atlassian.plugin.key>${project.groupId}.${project.artifactId}</atlassian.plugin.key>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+    </properties>
 
     <dependencyManagement>
         <dependencies>
@@ -32,60 +47,55 @@
 
     <dependencies>
         <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+        </dependency>
+
+        <!-- Crowd Plugin -->
+        <dependency>
             <groupId>com.atlassian.crowd</groupId>
             <artifactId>crowd-decorator-plugin</artifactId>
             <scope>provided</scope>
-            <!--<version>${crowd.version}</version>-->
         </dependency>
-        <!--<dependency>-->
-            <!--<groupId>com.atlassian.crowd</groupId>-->
-            <!--<artifactId>crowd-server</artifactId>-->
-            <!--<scope>provided</scope>-->
-            <!--&lt;!&ndash;<type>jar</type>&ndash;&gt;-->
-            <!--&lt;!&ndash;<version>${crowd.version}</version>&ndash;&gt;-->
-        <!--</dependency>-->
-
-        <!--for audit?-->
         <dependency>
             <groupId>com.atlassian.crowd</groupId>
             <artifactId>crowd-core</artifactId>
             <scope>provided</scope>
-            <!--<version>${crowd.version}</version>-->
         </dependency>
-
-
-
         <dependency>
             <groupId>com.atlassian.crowd</groupId>
             <artifactId>crowd-events</artifactId>
             <scope>provided</scope>
-            <!--<type>jar</type>-->
-            <!--<version>${crowd.version}</version>-->
         </dependency>
         <dependency>
             <groupId>com.atlassian.crowd</groupId>
             <artifactId>crowd-api</artifactId>
             <scope>provided</scope>
-            <!--<type>jar</type>-->
-            <!--<version>${crowd.version}</version>-->
         </dependency>
-        <!--<dependency>-->
-            <!--<groupId>com.atlassian.crowd</groupId>-->
-            <!--<artifactId>crowd-rest-common</artifactId>-->
-            <!--<scope>provided</scope>-->
-        <!--</dependency>-->
-        <!--<dependency>-->
-            <!--<groupId>com.atlassian.crowd</groupId>-->
-            <!--<artifactId>crowd-rest-plugin</artifactId>-->
-            <!--<scope>provided</scope>-->
-        <!--</dependency>-->
-        <!--<dependency>-->
-            <!--<groupId>com.atlassian.crowd</groupId>-->
-            <!--<artifactId>crowd-rest-application-management</artifactId>-->
-            <!--<scope>provided</scope>-->
-        <!--</dependency>-->
 
+        <!-- rest api -->
+        <dependency>
+            <groupId>com.atlassian.crowd</groupId>
+            <artifactId>crowd-rest-common</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.atlassian.crowd</groupId>
+            <artifactId>crowd-rest-plugin</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.atlassian.crowd</groupId>
+            <artifactId>crowd-rest-application-management</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
 
+        <!-- testing -->
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
@@ -98,12 +108,9 @@
             <version>1.3</version>
             <scope>test</scope>
         </dependency>
-        <!--<dependency>-->
-            <!--<groupId>javax.servlet</groupId>-->
-            <!--<artifactId>javax.servlet-api</artifactId>-->
-            <!--<scope>provided</scope>-->
-        <!--</dependency>-->
 
+
+        <!-- Atlassian Plugin core -->
         <dependency>
             <groupId>com.atlassian.sal</groupId>
             <artifactId>sal-api</artifactId>
@@ -121,7 +128,6 @@
             <groupId>com.atlassian.plugin</groupId>
             <artifactId>atlassian-spring-scanner-runtime</artifactId>
             <version>${atlassian.spring.scanner.version}</version>
-            <!--<scope>runtime</scope>-->
             <scope>provided</scope>
         </dependency>
 
@@ -152,11 +158,6 @@
             <!--<version>1.1.1</version>-->
             <scope>provided</scope>
         </dependency>
-        <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-            <!--<version>2.2.2-atlassian-1</version>-->
-        </dependency>
     </dependencies>
 
     <build>
@@ -178,9 +179,9 @@
                         <Atlassian-Plugin-Key>${atlassian.plugin.key}</Atlassian-Plugin-Key>
 
                         <!-- Add package to export here -->
-                        <!--<Export-Package>-->
-                            <!--org.opennetworking.crowd.api,-->
-                        <!--</Export-Package>-->
+                        <Export-Package>
+                            org.opennetworking.crowd.poster,
+                        </Export-Package>
 
                         <!-- Add package import here -->
                         <Import-Package>
@@ -219,20 +220,4 @@
             </plugin>
         </plugins>
     </build>
-
-    <properties>
-        <crowd.version>3.7.0</crowd.version>
-        <crowd.data.version>3.7.0</crowd.data.version>
-        <amps.version>6.3.21</amps.version>
-        <plugin.testrunner.version>1.2.3</plugin.testrunner.version>
-        <atlassian.spring.scanner.version>2.1.5</atlassian.spring.scanner.version>
-        <!--Must match atlassian-crowd pom version-->
-        <slf4j.version>1.7.25</slf4j.version>
-        <!-- This key is used to keep the consistency between the key in atlassian-plugin.xml and the key to generate bundle. -->
-        <atlassian.plugin.key>${project.groupId}.${project.artifactId}</atlassian.plugin.key>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
-    </properties>
-
 </project>

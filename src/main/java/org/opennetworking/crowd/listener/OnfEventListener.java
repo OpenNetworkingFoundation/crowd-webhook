@@ -1,4 +1,4 @@
-package org.opennetworking.crowd;
+package org.opennetworking.crowd.listener;
 
 import com.atlassian.crowd.audit.*;
 import com.atlassian.crowd.audit.query.AuditLogQuery;
@@ -17,15 +17,16 @@ import com.atlassian.crowd.model.audit.AuditLogChangesetEntity;
 import com.atlassian.crowd.model.audit.AuditLogEntityEntity;
 import com.atlassian.crowd.model.audit.AuditLogEntryEntity;
 import com.atlassian.crowd.model.membership.MembershipType;
-import com.atlassian.crowd.model.user.UserWithAttributes;
 import com.atlassian.crowd.search.EntityDescriptor;
 import com.atlassian.crowd.search.builder.QueryBuilder;
 import com.atlassian.event.api.EventListener;
 import com.atlassian.plugin.spring.scanner.annotation.imports.ComponentImport;
-import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import org.opennetworking.crowd.api.OnfEventPoster;
+import org.opennetworking.crowd.api.WebhookEvent;
+import org.opennetworking.crowd.api.WebhookUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,18 +34,19 @@ import javax.inject.Inject;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.google.common.base.Objects.equal;
 import static com.google.common.base.Strings.isNullOrEmpty;
+import static org.opennetworking.crowd.api.WebhookEvent.EventType.*;
+import static org.opennetworking.crowd.api.WebhookUser.EMAIL_ATTRIBUTE;
+import static org.opennetworking.crowd.api.WebhookUser.GITHUB_ID_ATTRIBUTE;
 
 public class OnfEventListener {
     private static final Logger logger = LoggerFactory.getLogger(OnfEventListener.class);
 
-    public static final String EMAIL_ATTRIBUTE = "Email";
-    public static final String GITHUB_ID_ATTRIBUTE = "github_id";
+
     public static final int MAX_RESULTS = 1000;
 
-    @ComponentImport
-    private final OnfEventPoster eventPoster;
+//    @ComponentImport
+    private final OnfEventPoster onfEventPoster;
 
     @ComponentImport
     private final DirectoryManager directoryManager;
@@ -53,113 +55,13 @@ public class OnfEventListener {
     private final AuditService auditService;
 
     @Inject
-    public OnfEventListener(final OnfEventPoster eventPoster,
+    public OnfEventListener(final OnfEventPoster onfEventPoster,
                             final DirectoryManager directoryManager,
                             final AuditService auditService)
     {
-        this.eventPoster = eventPoster;
+        this.onfEventPoster = onfEventPoster;
         this.directoryManager = directoryManager;
         this.auditService = auditService;
-    }
-
-    public static class WebhookUser {
-        String username;
-        String email;
-        String name; // display name
-        List<String> groups;
-        String githubId;
-
-        public WebhookUser(UserWithAttributes user) {
-            username = user.getName();
-            email = user.getEmailAddress();
-            name = user.getDisplayName();
-            groups = ImmutableList.of();
-            if (user.getKeys().contains(GITHUB_ID_ATTRIBUTE)) {
-                githubId = user.getValue(GITHUB_ID_ATTRIBUTE);
-            }
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof WebhookUser)) return false;
-            WebhookUser that = (WebhookUser) o;
-            return equal(username, that.username) &&
-                    equal(email, that.email) &&
-                    equal(name, that.name) &&
-                    equal(groups, that.groups) &&
-                    equal(githubId, that.githubId);
-        }
-
-        @Override
-        public int hashCode() {
-            return com.google.common.base.Objects.hashCode(username, email, name, groups, githubId);
-        }
-
-        @Override
-        public String toString() {
-            return MoreObjects.toStringHelper(this)
-                    .add("username", username)
-                    .add("email", email)
-                    .add("name", name)
-                    .add("groups", groups)
-                    .add("githubId", githubId)
-                    .toString();
-        }
-    }
-
-    public enum EventType {
-        USER_ADDED,
-        USER_ADDED_GITHUB,
-        USER_ADDED_GROUP,
-        USER_UPDATED_EMAIL,
-        USER_UPDATED_GITHUB,
-        USER_DELETED,
-        USER_DELETED_GITHUB,
-        USER_DELETED_GROUP,
-    }
-
-    public static class WebhookEvent {
-        public EventType type;
-        public WebhookUser user;
-        public String groupName;
-        public String oldGithubId;
-        public String newGithubId;
-        public String oldEmail;
-        public String newEmail;
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof WebhookEvent)) return false;
-            WebhookEvent that = (WebhookEvent) o;
-            return type == that.type &&
-                    equal(user, that.user) &&
-                    equal(groupName, that.groupName) &&
-                    equal(oldGithubId, that.oldGithubId) &&
-                    equal(newGithubId, that.newGithubId) &&
-                    equal(oldEmail, that.oldEmail) &&
-                    equal(newEmail, that.newEmail);
-        }
-
-        @Override
-        public int hashCode() {
-            return com.google.common.base.Objects.hashCode(
-                    type, user, groupName, oldGithubId, newGithubId, oldEmail, newEmail);
-        }
-
-        @Override
-        public String toString() {
-            return MoreObjects.toStringHelper(this)
-                    .add("type", type)
-                    .add("user", user)
-                    .add("groupName", groupName)
-                    .add("oldGithubId", oldGithubId)
-                    .add("newGithubId", newGithubId)
-                    .add("oldEmail", oldEmail)
-                    .add("newEmail", newEmail)
-                    .toString();
-        }
     }
 
 //    @EventListener
@@ -176,7 +78,7 @@ public class OnfEventListener {
          */
         WebhookUser user = getUser(event.getDirectoryId(), event.getUser().getName());
         WebhookEvent webhookEvent = new WebhookEvent();
-        webhookEvent.type = EventType.USER_ADDED;
+        webhookEvent.type = USER_ADDED;
         webhookEvent.user = user;
         this.sendEvent(webhookEvent);
     }
@@ -189,7 +91,7 @@ public class OnfEventListener {
          */
         event.getUsernames().forEach(username -> {
             WebhookEvent webhookEvent = new WebhookEvent();
-            webhookEvent.type = EventType.USER_DELETED;
+            webhookEvent.type = USER_DELETED;
             getAuditEntry(username, GITHUB_ID_ATTRIBUTE).ifPresent(entry ->
                     webhookEvent.oldGithubId = entry.getNewValue());
             getAuditEntry(username, EMAIL_ATTRIBUTE).ifPresent(entry ->
@@ -206,7 +108,7 @@ public class OnfEventListener {
          */
         WebhookUser user = getUser(event.getDirectoryId(), event.getUser().getName());
         WebhookEvent webhookEvent = new WebhookEvent();
-        webhookEvent.type = EventType.USER_UPDATED_EMAIL;
+        webhookEvent.type = USER_UPDATED_EMAIL;
         webhookEvent.user = user;
         webhookEvent.newEmail = user.email; // assert user.email == entry.getOldValue
         getAuditEntry(event.getUser().getName(), EMAIL_ATTRIBUTE).ifPresent(entry ->
@@ -238,7 +140,7 @@ public class OnfEventListener {
                                                    newValue, event.getTimestamp());
             boolean isUpdated = !isNullOrEmpty(entry.getOldValue());
             WebhookEvent webhookEvent = new WebhookEvent();
-            webhookEvent.type = isUpdated ? EventType.USER_UPDATED_GITHUB: EventType.USER_ADDED_GITHUB;
+            webhookEvent.type = isUpdated ? USER_UPDATED_GITHUB: USER_ADDED_GITHUB;
             webhookEvent.user = user;
             if (isUpdated) {
                 webhookEvent.oldGithubId = entry.getOldValue();
@@ -261,7 +163,7 @@ public class OnfEventListener {
             AuditLogEntry entry = createAuditEntry(
                     event.getUser().getName(), GITHUB_ID_ATTRIBUTE, "", event.getTimestamp());
             WebhookEvent webhookEvent = new WebhookEvent();
-            webhookEvent.type = EventType.USER_DELETED_GITHUB;
+            webhookEvent.type = USER_DELETED_GITHUB;
             webhookEvent.user = user;
             webhookEvent.oldGithubId = entry.getOldValue();
             this.sendEvent(webhookEvent);
@@ -297,7 +199,7 @@ public class OnfEventListener {
             groupAndParents.forEach(groupName -> {
                 WebhookUser user = this.getUser(directoryId, username);
                 WebhookEvent webhookEvent = new WebhookEvent();
-                webhookEvent.type = EventType.USER_ADDED_GROUP;
+                webhookEvent.type = USER_ADDED_GROUP;
                 webhookEvent.user = user;
                 webhookEvent.groupName = groupName;
                 this.sendEvent(webhookEvent);
@@ -335,15 +237,13 @@ public class OnfEventListener {
                     return; // skip this event
                 }
                 WebhookEvent webhookEvent = new WebhookEvent();
-                webhookEvent.type = EventType.USER_DELETED_GROUP;
+                webhookEvent.type = USER_DELETED_GROUP;
                 webhookEvent.user = user;
                 webhookEvent.groupName = groupName;
                 this.sendEvent(webhookEvent);
             })
         );
     }
-
-
 
     private WebhookUser getUser(long directoryId, String username) {
         WebhookUser user = null;
@@ -399,7 +299,7 @@ public class OnfEventListener {
     }
 
     private void sendEvent(WebhookEvent event) {
-        eventPoster.send(event);
+        onfEventPoster.send(event);
     }
 
     private Optional<? extends AuditLogEntry> getAuditEntry(String username, String attribute) {

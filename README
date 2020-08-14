@@ -17,3 +17,6 @@ export ONF_WEBHOOK_URL="http://localhost:5001/cla-manager-f1a7f/us-central1/crow
 export ONF_WEBHOOK_SECRET="aaaaaaaaaaaaaa"
 atlas-clean
 atlas-run -Dproduct.version=3.7.0
+
+http://localhost:4990/crowd
+admin/admin

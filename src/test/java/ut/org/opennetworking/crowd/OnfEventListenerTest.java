@@ -20,16 +20,20 @@ import com.google.common.collect.Lists;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.opennetworking.crowd.OnfEventListener;
-import org.opennetworking.crowd.OnfEventPoster;
+import org.opennetworking.crowd.api.WebhookEvent;
+import org.opennetworking.crowd.api.WebhookUser;
+import org.opennetworking.crowd.listener.OnfEventListener;
+import org.opennetworking.crowd.api.OnfEventPoster;
+import org.opennetworking.crowd.poster.OnfEventPosterImpl;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static org.junit.Assert.assertArrayEquals;
-import static org.opennetworking.crowd.OnfEventListener.EventType.USER_ADDED;
-import static org.opennetworking.crowd.OnfEventListener.EventType.USER_ADDED_GITHUB;
+import static org.opennetworking.crowd.api.WebhookEvent.EventType.USER_ADDED;
+import static org.opennetworking.crowd.api.WebhookEvent.EventType.USER_ADDED_GITHUB;
+import static org.opennetworking.crowd.api.WebhookUser.GITHUB_ID_ATTRIBUTE;
 
 public class OnfEventListenerTest
 {
@@ -42,15 +46,15 @@ public class OnfEventListenerTest
             .setId(7L)
             .build();
 
-    static class MockOnfEventPoster extends OnfEventPoster {
-        List<OnfEventListener.WebhookEvent> events = Lists.newArrayList();
+    static class MockOnfEventPoster extends OnfEventPosterImpl {
+        List<WebhookEvent> events = Lists.newArrayList();
 
         MockOnfEventPoster() {
             super(null);
         }
 
         @Override
-        public void send(OnfEventListener.WebhookEvent event) {
+        public void send(WebhookEvent event) {
             // Mock event send
             events.add(event);
         }
@@ -96,7 +100,7 @@ public class OnfEventListenerTest
                         ImmutableUser.builder(directory.getId(), username)
                                      .emailAddress(email)
                                      .build());
-        userTemplateWithAttributes.setAttribute(OnfEventListener.GITHUB_ID_ATTRIBUTE, githubId);
+        userTemplateWithAttributes.setAttribute(GITHUB_ID_ATTRIBUTE, githubId);
         return userTemplateWithAttributes;
     }
 
@@ -120,9 +124,9 @@ public class OnfEventListenerTest
         directoryManager.addUser(7, user, null);
         UserCreatedEvent event = new UserCreatedEvent(null, directory, user);
         eventListener.userCreated(event);
-        OnfEventListener.WebhookEvent expectedEvent = new OnfEventListener.WebhookEvent();
+        WebhookEvent expectedEvent = new WebhookEvent();
         expectedEvent.type = USER_ADDED;
-        expectedEvent.user = new OnfEventListener.WebhookUser(user);
+        expectedEvent.user = new WebhookUser(user);
         System.out.println(expectedEvent);
         assertArrayEquals(Lists.newArrayList(expectedEvent).toArray(), eventPoster.events.toArray());
     }
@@ -134,12 +138,12 @@ public class OnfEventListenerTest
         String githubId = "test-github";
         UserTemplateWithAttributes user = getUser("test-user", "test@test", githubId);
         directoryManager.addUser(7, user, null);
-        Map<String, Set<String>> attributes = ImmutableMap.of(OnfEventListener.GITHUB_ID_ATTRIBUTE, ImmutableSet.of(githubId));
+        Map<String, Set<String>> attributes = ImmutableMap.of(GITHUB_ID_ATTRIBUTE, ImmutableSet.of(githubId));
         UserAttributeStoredEvent event = new UserAttributeStoredEvent(null, directory, user, attributes);
         eventListener.userAttributeStored(event);
-        OnfEventListener.WebhookEvent expectedEvent = new OnfEventListener.WebhookEvent();
+        WebhookEvent expectedEvent = new WebhookEvent();
         expectedEvent.type = USER_ADDED_GITHUB;
-        expectedEvent.user = new OnfEventListener.WebhookUser(user);
+        expectedEvent.user = new WebhookUser(user);
         expectedEvent.newGithubId = githubId;
         System.out.println(expectedEvent);
         assertArrayEquals(Lists.newArrayList(expectedEvent).toArray(), eventPoster.events.toArray());

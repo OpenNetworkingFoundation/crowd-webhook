@@ -7,9 +7,33 @@
         <param name="plugin-logo">images/pluginLogo.png</param>
     </plugin-info>
 
-    <listener name="User Created Listener" key="onflistener" class="org.opennetworking.crowd.OnfEventListener">
+    <listener name="User Created Listener" key="onflistener" class="org.opennetworking.crowd.listener.OnfEventListener">
         <description>Listens to user and group events and relays them to ONF services.</description>
     </listener>
+
+    <!--<servlet name="Hello World Servlet" key="helloWorld" class="org.opennetworking.crowd.admin.OnfServlet">-->
+        <!--<description>Says Hello World, Australia or your name.</description>-->
+        <!--<url-pattern>/helloworld</url-pattern>-->
+        <!--<system>true</system>-->
+        <!--<init-param>-->
+            <!--<param-name>defaultName</param-name>-->
+            <!--<param-value>Australia</param-value>-->
+        <!--</init-param>-->
+    <!--</servlet>-->
+
+
+    <!--<component key="onfEventPoster" class="org.opennetworking.crowd.api.OnfEventPoster" interface="org.opennetworking.crowd.api.OnfEventPoster">-->
+        <!--<description>Provides a dictionary service.</description>-->
+        <!--&lt;!&ndash;<service-properties>&ndash;&gt;-->
+            <!--&lt;!&ndash;<entry key="language" value="English" />&ndash;&gt;-->
+        <!--&lt;!&ndash;</service-properties>&ndash;&gt;-->
+    <!--</component>-->
+
+    <!--<component key="onfEventPoster" class="org.opennetworking.crowd.poster.OnfEventPosterImpl">-->
+        <!--<description>Provides hello world services.</description>-->
+        <!--<interface>org.opennetworking.crowd.api.OnfEventPoster</interface>-->
+    <!--</component>-->
+
 
     <!-- add our i18n resource -->
     <!--<resource type="i18n" name="i18n" location="sample-plugin"/>-->
