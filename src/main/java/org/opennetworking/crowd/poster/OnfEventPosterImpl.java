@@ -10,7 +10,6 @@ import org.opennetworking.crowd.api.OnfEventPoster;
 import org.opennetworking.crowd.api.WebhookEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import javax.inject.Inject;
 import javax.inject.Named;
@@ -23,7 +22,6 @@ import static com.google.common.base.Strings.isNullOrEmpty;
 
 @ExportAsService({OnfEventPoster.class})
 @Named("onfEventPoster")
-//@Component("onfEventPoster")
 public class OnfEventPosterImpl implements OnfEventPoster {
     private final static Logger logger = LoggerFactory.getLogger(OnfEventPosterImpl.class);
     private final static String DEFAULT_TARGET_URL = "http://localhost:5000";

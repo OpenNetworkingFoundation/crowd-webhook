@@ -64,11 +64,6 @@ public class OnfEventListener {
         this.auditService = auditService;
     }
 
-//    @EventListener
-//    public void printDirectoryEvent(DirectoryEvent event) {
-//        System.out.println("Got event: " + event.toString());
-//    }
-
     @EventListener
     public void userCreated(UserCreatedEvent event) {
         /*
@@ -92,10 +87,15 @@ public class OnfEventListener {
         event.getUsernames().forEach(username -> {
             WebhookEvent webhookEvent = new WebhookEvent();
             webhookEvent.type = USER_DELETED;
-            getAuditEntry(username, GITHUB_ID_ATTRIBUTE).ifPresent(entry ->
-                    webhookEvent.oldGithubId = entry.getNewValue());
-            getAuditEntry(username, EMAIL_ATTRIBUTE).ifPresent(entry ->
-                    webhookEvent.oldEmail = entry.getOldValue()); // user deleted will be most recent in audit log
+            AuditLogEntry entry = createAuditEntry(
+                username, GITHUB_ID_ATTRIBUTE, "", event.getTimestamp());
+            System.out.println(entry);
+            if (entry != null && !isNullOrEmpty(entry.getOldValue())) {
+                webhookEvent.oldGithubId = entry.getOldValue();
+            }  // else, no old Github ID
+            // TODO(bocon): fix email audit log
+            getAuditEntry(username, EMAIL_ATTRIBUTE).ifPresent(e ->
+                    webhookEvent.oldEmail = e.getOldValue()); // user deleted will be most recent in audit log
             this.sendEvent(webhookEvent);
         });
     }
@@ -138,6 +138,9 @@ public class OnfEventListener {
                                    });
             AuditLogEntry entry = createAuditEntry(event.getUser().getName(), GITHUB_ID_ATTRIBUTE,
                                                    newValue, event.getTimestamp());
+            if (entry == null) {
+                return;  // Github ID was not updated
+            }
             boolean isUpdated = !isNullOrEmpty(entry.getOldValue());
             WebhookEvent webhookEvent = new WebhookEvent();
             webhookEvent.type = isUpdated ? USER_UPDATED_GITHUB: USER_ADDED_GITHUB;
@@ -162,6 +165,9 @@ public class OnfEventListener {
             WebhookUser user = getUser(event.getDirectoryId(), event.getUser().getName());
             AuditLogEntry entry = createAuditEntry(
                     event.getUser().getName(), GITHUB_ID_ATTRIBUTE, "", event.getTimestamp());
+            if (entry == null || isNullOrEmpty(entry.getOldValue())) {
+                return;  // no old Github ID
+            }
             WebhookEvent webhookEvent = new WebhookEvent();
             webhookEvent.type = USER_DELETED_GITHUB;
             webhookEvent.user = user;
@@ -328,6 +334,11 @@ public class OnfEventListener {
         List<AuditLogChangeset> changesets = getAuditChangesets(username);
         Optional<? extends AuditLogEntry> lastEntry = getAuditEntry(changesets, attribute);
         String oldValue = lastEntry.isPresent() ? lastEntry.get().getNewValue() : "";
+
+        if (oldValue.equals(newValue)) {
+            // Old and new Github ID are identical; no need to create an audit log entry.
+            return null;
+        }
 
         AuditLogChangesetEntity changeset = new AuditLogChangesetEntity();
         changeset.setAuthorType(AuditLogAuthorType.PLUGIN);
